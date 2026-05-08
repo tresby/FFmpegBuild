@@ -150,9 +150,16 @@ COMMON_FLAGS=(
     # remux source bytes into fragmented MP4 segments served via
     # local HLS to AVPlayer for the Dolby-Vision-via-AVPlayer hybrid
     # path. The mov muxer is the underlying implementation; mp4
-    # selects it with the right brand defaults. No encoder is
-    # enabled so this is stream-copy only.
+    # selects it with the right brand defaults.
     --enable-muxer=mp4 --enable-muxer=mov
+    # FLAC encoder for the upcoming TrueHD / DTS / DTS-HD-MA bridge
+    # (DrHurt's `-c:a flac` trick from AetherEngine#1). Those codecs
+    # aren't legal in fMP4 / AVPlayer's decode set, but FLAC is. The
+    # bridge decodes the source's TrueHD or DTS packets to PCM via
+    # the existing truehd / dca decoders, re-encodes losslessly to
+    # FLAC, and muxes the FLAC stream alongside the video so AVPlayer
+    # plays it natively. Adds ~50 KB to the binary.
+    --enable-encoder=flac
 )
 
 build_one() {
