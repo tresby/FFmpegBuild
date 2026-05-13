@@ -135,6 +135,10 @@ COMMON_FLAGS=(
     --enable-decoder=mp3float --enable-decoder=opus --enable-decoder=vorbis
     --enable-decoder=truehd --enable-decoder=dca --enable-decoder=alac
     --enable-decoder=pcm_s16le --enable-decoder=pcm_s24le --enable-decoder=pcm_f32le
+    # MP2 (MPEG-1 Layer II) decoder for DVD-remux audio tracks that
+    # still carry MP2. Not legal in fMP4 so AetherEngine's AudioBridge
+    # decodes to PCM and re-encodes as FLAC. ~5 KB binary cost.
+    --enable-decoder=mp2
     --enable-decoder=ass --enable-decoder=srt --enable-decoder=subrip
     --enable-decoder=movtext --enable-decoder=dvdsub --enable-decoder=dvbsub
     --enable-decoder=pgssub --enable-decoder=webvtt
