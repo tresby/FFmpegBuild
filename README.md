@@ -30,7 +30,8 @@ Full FFmpeg builds for iOS land at 40-70 MB because they bundle a TLS stack, enc
 | libavformat    | Demux MKV, MP4, HLS, DASH, MPEG-TS, AVI, WebM, OGG, … |
 | libavcodec     | Decode video + audio (with VideoToolbox bridge)       |
 | libavutil      | Shared primitives                                     |
-| libswresample  | Audio resampling / channel remap / format convert    |
+| libswresample  | Audio resampling / channel remap / format convert     |
+| libswscale     | Pixel-format convert (YUV → NV12 / P010) for the SW-decode path |
 | **dav1d**      | Fast AV1 software decoder (separate xcframework)      |
 
 ## Out
@@ -40,7 +41,7 @@ Anything the app layer should already handle or doesn't need:
 - Network / TLS: FFmpeg reads from an `avio_alloc_context` callback, you wire `URLSession` to it
 - Encoders, except FLAC (kept for the TrueHD / DTS / DTS-HD-MA → FLAC bridge that lets AVPlayer ingest lossless audio)
 - Muxers, except MP4 / MOV / HLS (kept for the HLS-fMP4 producer that wraps streams for AVPlayer)
-- libavfilter, libswscale, libavdevice
+- libavfilter, libavdevice
 - Programs (`ffmpeg`, `ffplay`, `ffprobe`)
 - Hardware accel layers other than VideoToolbox
 - Text subtitle rendering (do that in SwiftUI)
