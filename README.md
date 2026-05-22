@@ -39,7 +39,7 @@ Full FFmpeg builds for iOS land at 40-70 MB because they bundle a TLS stack, enc
 Anything the app layer should already handle or doesn't need:
 
 - Network / TLS: FFmpeg reads from an `avio_alloc_context` callback, you wire `URLSession` to it
-- Encoders, except FLAC (kept for the TrueHD / DTS / DTS-HD-MA → FLAC bridge that lets AVPlayer ingest lossless audio)
+- Encoders, except FLAC and EAC3 (kept for the audio bridge that re-encodes non-streamable sources like TrueHD / DTS / DTS-HD MA. FLAC for the lossless 7.1 path, EAC3 5.1 for the default soundbar-compat path that surfaces surround via HDMI bitstream tunnel)
 - Muxers, except MP4 / MOV / HLS (kept for the HLS-fMP4 producer that wraps streams for AVPlayer)
 - libavfilter, libavdevice
 - Programs (`ffmpeg`, `ffplay`, `ffprobe`)
