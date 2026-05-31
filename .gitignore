@@ -6,3 +6,6 @@ xcuserdata/
 DerivedData/
 .swiftpm/
 .netrc
+
+# Local-only design specs and plans (never pushed to the public repo)
+docs/superpowers/
