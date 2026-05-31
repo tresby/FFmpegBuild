@@ -13,11 +13,14 @@ FFMPEG_VERSION="n8.1"
 FFMPEG_REPO="https://github.com/FFmpeg/FFmpeg.git"
 DAV1D_VERSION="1.5.1"
 DAV1D_REPO="https://code.videolan.org/videolan/dav1d.git"
+ZIMG_VERSION="release-3.0.5"
+ZIMG_REPO="https://github.com/sekrit-twc/zimg.git"
 SCRIPT_DIR="${0:a:h}"
 BUILD_DIR="${SCRIPT_DIR}/build"
 OUTPUT_DIR="${SCRIPT_DIR}/Sources"
 FFMPEG_SRC="${BUILD_DIR}/ffmpeg-src"
 DAV1D_SRC="${BUILD_DIR}/dav1d-src"
+ZIMG_SRC="${BUILD_DIR}/zimg-src"
 
 # ─────────────────────────────────────────────────────────
 
@@ -37,6 +40,20 @@ fetch_dav1d() {
     fi
     echo "→ Cloning dav1d ${DAV1D_VERSION}..."
     git clone --depth 1 --branch "${DAV1D_VERSION}" "${DAV1D_REPO}" "${DAV1D_SRC}"
+}
+
+fetch_zimg() {
+    if [[ -d "${ZIMG_SRC}" ]]; then
+        echo "→ zimg source already exists, skipping clone"
+        return
+    fi
+    echo "→ Cloning zimg ${ZIMG_VERSION}..."
+    git clone --depth 1 --branch "${ZIMG_VERSION}" --recurse-submodules "${ZIMG_REPO}" "${ZIMG_SRC}"
+    # zimg ships an autotools build; generate the configure script once.
+    # macOS Homebrew installs GNU libtool as glibtoolize; this gnubin dir
+    # exposes it (and friends) under their normal names so autogen.sh's
+    # libtoolize call resolves.
+    ( cd "${ZIMG_SRC}" && PATH="/opt/homebrew/opt/libtool/libexec/gnubin:${PATH}" ./autogen.sh )
 }
 
 # ─────────────────────────────────────────────────────────
@@ -100,6 +117,43 @@ CROSSEOF
 }
 
 # ─────────────────────────────────────────────────────────
+# zimg cross-compilation (autotools)
+# ─────────────────────────────────────────────────────────
+
+build_zimg_one() {
+    local KEY="$1" SDK="$2" ARCH="$3" TARGET="$4" MIN_VER="$5"
+
+    echo ""
+    echo "━━━ Building zimg: ${KEY} (${ARCH} for ${SDK}) ━━━"
+
+    local SDK_PATH=$(xcrun --sdk "${SDK}" --show-sdk-path)
+    local INSTALL_DIR="${BUILD_DIR}/zimg-thin/${KEY}"
+    local WORK_DIR="${BUILD_DIR}/zimg-work/${KEY}"
+    rm -rf "${WORK_DIR}"
+    mkdir -p "${WORK_DIR}" "${INSTALL_DIR}"
+
+    local HOST_TRIPLE="aarch64-apple-darwin"
+    [[ "${ARCH}" == "x86_64" ]] && HOST_TRIPLE="x86_64-apple-darwin"
+
+    local FLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common"
+
+    cd "${WORK_DIR}"
+    CC="clang ${FLAGS}" \
+    CXX="clang++ ${FLAGS}" \
+    "${ZIMG_SRC}/configure" \
+        --host="${HOST_TRIPLE}" \
+        --prefix="${INSTALL_DIR}" \
+        --enable-static \
+        --disable-shared \
+        2>&1 | tail -5
+
+    make -j$(sysctl -n hw.ncpu) 2>&1 | tail -3
+    make install 2>&1 | tail -3
+
+    echo "✓ zimg ${KEY} → ${INSTALL_DIR}"
+}
+
+# ─────────────────────────────────────────────────────────
 # FFmpeg
 # ─────────────────────────────────────────────────────────
 
@@ -108,13 +162,19 @@ COMMON_FLAGS=(
     --enable-optimizations --enable-stripping --disable-debug
     --disable-autodetect --disable-doc --disable-programs
     --disable-devices --disable-outdevs --disable-indevs
-    --disable-avdevice --disable-avfilter
+    --disable-avdevice --enable-avfilter
     --enable-swscale --disable-encoders --disable-muxers
     --disable-bsfs --disable-network --disable-protocols
     --disable-d3d11va --disable-dxva2 --disable-vaapi --disable-vdpau
     --disable-gray --disable-iconv --disable-bzlib
     --disable-linux-perf --disable-symver --disable-swscale-alpha
     --enable-avcodec --enable-avformat --enable-avutil --enable-swresample
+    --enable-libzimg
+    --disable-filters
+    --enable-filter=buffer --enable-filter=buffersink
+    --enable-filter=format --enable-filter=scale
+    --enable-filter=zscale --enable-filter=tonemap
+    --enable-filter=colorspace
     --enable-videotoolbox --enable-audiotoolbox
     --enable-libdav1d
     --enable-protocol=file --enable-protocol=pipe --enable-protocol=data
@@ -184,6 +244,7 @@ build_one() {
     local SDK_PATH=$(xcrun --sdk "${SDK}" --show-sdk-path)
     local INSTALL_DIR="${BUILD_DIR}/thin/${KEY}"
     local DAV1D_DIR="${BUILD_DIR}/dav1d-thin/${KEY}"
+    local ZIMG_DIR="${BUILD_DIR}/zimg-thin/${KEY}"
     mkdir -p "${INSTALL_DIR}"
 
     local CFLAGS="-arch ${ARCH} -isysroot ${SDK_PATH} -target ${TARGET} -fno-common -DHAVE_FORK=0"
@@ -192,6 +253,10 @@ build_one() {
     # Add dav1d include/lib paths
     CFLAGS="${CFLAGS} -I${DAV1D_DIR}/include"
     LDFLAGS="${LDFLAGS} -L${DAV1D_DIR}/lib"
+
+    # Add zimg include/lib paths (zimg is C++, so the FFmpeg link needs -lc++)
+    CFLAGS="${CFLAGS} -I${ZIMG_DIR}/include"
+    LDFLAGS="${LDFLAGS} -L${ZIMG_DIR}/lib -lc++"
 
     local ASM_FLAGS=(--enable-neon)
     [[ "${ARCH}" == "x86_64" ]] && ASM_FLAGS=(--disable-asm --disable-neon)
@@ -202,7 +267,7 @@ build_one() {
     cd "${WORK_DIR}"
 
     # Set pkg-config path so FFmpeg's configure can find dav1d
-    export PKG_CONFIG_PATH="${DAV1D_DIR}/lib/pkgconfig"
+    export PKG_CONFIG_PATH="${DAV1D_DIR}/lib/pkgconfig:${ZIMG_DIR}/lib/pkgconfig"
 
     "${FFMPEG_SRC}/configure" \
         --prefix="${INSTALL_DIR}" \
@@ -235,8 +300,15 @@ make_framework() {
     local HEADER_SRC="${BUILD_DIR}/thin/${KEYS[1]}/include/${LIB}"
     # For dav1d, headers are in a different location
     [[ "${LIB}" == "dav1d" ]] && HEADER_SRC="${BUILD_DIR}/dav1d-thin/${KEYS[1]}/include/dav1d"
+    # For zimg, headers install directly under include/
+    [[ "${LIB}" == "zimg" ]] && HEADER_SRC="${BUILD_DIR}/zimg-thin/${KEYS[1]}/include"
 
-    if [[ -d "${HEADER_SRC}" ]]; then
+    if [[ "${LIB}" == "zimg" ]]; then
+        # Ship only the C API header; zimg++.hpp would put C++ into the
+        # framework module. No Swift consumer imports Libzimg directly
+        # (it is a link-only dependency of libavfilter).
+        cp "${HEADER_SRC}/zimg.h" "${FW_DIR}/Headers/"
+    elif [[ -d "${HEADER_SRC}" ]]; then
         cp -R "${HEADER_SRC}/"* "${FW_DIR}/Headers/"
     fi
 
@@ -263,6 +335,8 @@ make_framework() {
         local LIB_PATH
         if [[ "${LIB}" == "dav1d" ]]; then
             LIB_PATH="${BUILD_DIR}/dav1d-thin/${K}/lib/libdav1d.a"
+        elif [[ "${LIB}" == "zimg" ]]; then
+            LIB_PATH="${BUILD_DIR}/zimg-thin/${K}/lib/libzimg.a"
         else
             LIB_PATH="${BUILD_DIR}/thin/${K}/lib/${LIB}.a"
         fi
@@ -337,7 +411,7 @@ make_xcframeworks() {
     echo ""
     echo "━━━ Creating XCFrameworks ━━━"
 
-    local PAIRS=("libavcodec:Libavcodec" "libavformat:Libavformat" "libavutil:Libavutil" "libswresample:Libswresample" "libswscale:Libswscale" "dav1d:Libdav1d")
+    local PAIRS=("libavcodec:Libavcodec" "libavformat:Libavformat" "libavutil:Libavutil" "libswresample:Libswresample" "libswscale:Libswscale" "libavfilter:Libavfilter" "dav1d:Libdav1d" "zimg:Libzimg")
 
     for PAIR in "${PAIRS[@]}"; do
         local LIB="${PAIR%%:*}"
@@ -393,6 +467,7 @@ echo "╚═══════════════════════�
 
 fetch_ffmpeg
 fetch_dav1d
+fetch_zimg
 
 # Build dav1d for all platforms first
 build_dav1d_one ios-arm64          iphoneos         arm64  arm64-apple-ios16.0                    16.0
@@ -403,6 +478,16 @@ build_dav1d_one tvsimulator-arm64  appletvsimulator arm64  arm64-apple-tvos16.0-
 build_dav1d_one tvsimulator-x86_64 appletvsimulator x86_64 x86_64-apple-tvos16.0-simulator        16.0
 build_dav1d_one macos-arm64        macosx           arm64  arm64-apple-macos14.0                  14.0
 build_dav1d_one macos-x86_64       macosx           x86_64 x86_64-apple-macos14.0                 14.0
+
+# Build zimg for all platforms (FFmpeg's configure must find it)
+build_zimg_one ios-arm64          iphoneos         arm64  arm64-apple-ios16.0                    16.0
+build_zimg_one isimulator-arm64   iphonesimulator  arm64  arm64-apple-ios16.0-simulator          16.0
+build_zimg_one isimulator-x86_64  iphonesimulator  x86_64 x86_64-apple-ios16.0-simulator         16.0
+build_zimg_one tvos-arm64         appletvos        arm64  arm64-apple-tvos16.0                   16.0
+build_zimg_one tvsimulator-arm64  appletvsimulator arm64  arm64-apple-tvos16.0-simulator         16.0
+build_zimg_one tvsimulator-x86_64 appletvsimulator x86_64 x86_64-apple-tvos16.0-simulator        16.0
+build_zimg_one macos-arm64        macosx           arm64  arm64-apple-macos14.0                  14.0
+build_zimg_one macos-x86_64       macosx           x86_64 x86_64-apple-macos14.0                 14.0
 
 # Build FFmpeg (links against dav1d)
 build_one ios-arm64          iphoneos         arm64  arm64-apple-ios16.0                    16.0
