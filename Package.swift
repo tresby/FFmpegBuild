@@ -23,6 +23,7 @@ let package = Package(
         .library(name: "Libdav1d", targets: ["Libdav1d"]),
         .library(name: "Libavfilter", targets: ["Libavfilter"]),
         .library(name: "Libzimg", targets: ["Libzimg"]),
+        .library(name: "Libzvbi", targets: ["Libzvbi"]),
     ],
     targets: [
         // Umbrella target that links all FFmpeg libraries + dav1d + system frameworks
@@ -37,6 +38,7 @@ let package = Package(
                 "Libavfilter",
                 "Libdav1d",
                 "Libzimg",
+                "Libzvbi",
             ],
             path: "Sources/FFmpegBuild",
             linkerSettings: [
@@ -59,6 +61,7 @@ let package = Package(
         .binaryTarget(name: "Libdav1d", path: "Sources/Libdav1d.xcframework"),
         .binaryTarget(name: "Libavfilter", path: "Sources/Libavfilter.xcframework"),
         .binaryTarget(name: "Libzimg", path: "Sources/Libzimg.xcframework"),
+        .binaryTarget(name: "Libzvbi", path: "Sources/Libzvbi.xcframework"),
         .testTarget(
             name: "FFmpegBuildTests",
             dependencies: ["FFmpegBuild", "Libavfilter", "Libavutil"],

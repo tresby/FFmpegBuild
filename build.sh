@@ -418,12 +418,18 @@ make_framework() {
     [[ "${LIB}" == "dav1d" ]] && HEADER_SRC="${BUILD_DIR}/dav1d-thin/${KEYS[1]}/include/dav1d"
     # For zimg, headers install directly under include/
     [[ "${LIB}" == "zimg" ]] && HEADER_SRC="${BUILD_DIR}/zimg-thin/${KEYS[1]}/include"
+    # For zvbi, the umbrella header installs directly under include/
+    [[ "${LIB}" == "zvbi" ]] && HEADER_SRC="${BUILD_DIR}/zvbi-thin/${KEYS[1]}/include"
 
     if [[ "${LIB}" == "zimg" ]]; then
         # Ship only the C API header; zimg++.hpp would put C++ into the
         # framework module. No Swift consumer imports Libzimg directly
         # (it is a link-only dependency of libavfilter).
         cp "${HEADER_SRC}/zimg.h" "${FW_DIR}/Headers/"
+    elif [[ "${LIB}" == "zvbi" ]]; then
+        # Link-only dependency of libavcodec (the teletext decoder wrapper is
+        # already compiled into libavcodec). Ship just the umbrella C header.
+        cp "${HEADER_SRC}/libzvbi.h" "${FW_DIR}/Headers/"
     elif [[ -d "${HEADER_SRC}" ]]; then
         cp -R "${HEADER_SRC}/"* "${FW_DIR}/Headers/"
     fi
@@ -453,6 +459,8 @@ make_framework() {
             LIB_PATH="${BUILD_DIR}/dav1d-thin/${K}/lib/libdav1d.a"
         elif [[ "${LIB}" == "zimg" ]]; then
             LIB_PATH="${BUILD_DIR}/zimg-thin/${K}/lib/libzimg.a"
+        elif [[ "${LIB}" == "zvbi" ]]; then
+            LIB_PATH="${BUILD_DIR}/zvbi-thin/${K}/lib/libzvbi.a"
         else
             LIB_PATH="${BUILD_DIR}/thin/${K}/lib/${LIB}.a"
         fi
@@ -527,7 +535,7 @@ make_xcframeworks() {
     echo ""
     echo "━━━ Creating XCFrameworks ━━━"
 
-    local PAIRS=("libavcodec:Libavcodec" "libavformat:Libavformat" "libavutil:Libavutil" "libswresample:Libswresample" "libswscale:Libswscale" "libavfilter:Libavfilter" "dav1d:Libdav1d" "zimg:Libzimg")
+    local PAIRS=("libavcodec:Libavcodec" "libavformat:Libavformat" "libavutil:Libavutil" "libswresample:Libswresample" "libswscale:Libswscale" "libavfilter:Libavfilter" "dav1d:Libdav1d" "zimg:Libzimg" "zvbi:Libzvbi")
 
     for PAIR in "${PAIRS[@]}"; do
         local LIB="${PAIR%%:*}"
